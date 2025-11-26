@@ -3,7 +3,7 @@
 O cabeçalho IPv4 é a parte frontal, essencial e compacta de cada datagrama que trafega pela internet, agindo como o envelope que guia a informação da origem ao destino. Sua estrutura básica é de 20 bytes e contém os dados cruciais que definem como o pacote deve ser roteado. Os primeiros campos incluem a versão, sempre 4 para este protocolo, e o IHL (Internet Header Length), que informa o tamanho total do cabeçalho. Em seguida, o campo tipo de serviço permite que roteadores priorizem o tráfego conforme a necessidade. O comprimento total indica o tamanho completo do pacote, enquanto os campos de identificação, flags e fragment offset são dedicados à fragmentação, permitindo que pacotes grandes sejam divididos para passar por redes com limitações de tamanho e, depois, remontados corretamente no destino. O TTL (time to live) é um contador de hops que evita que pacotes circulem em loops infinitos, ele é decrementado em cada roteador e o pacote é descartado ao chegar a zero. O campo protocolo é vital, pois informa qual protocolo da camada de transporte (como TCP ou UDP) está contido na área de dados, e o Checksum é usado para garantir a integridade do próprio cabeçalho. Por fim, temos os campos de endereços IP de origem e destino, cada um com 32 bits, que definem quem enviou e quem deve receber o pacote.  
 O header segue o padrão de formação abaixo:
   
-<img src="imagens\headeripv4.png" alt="Header IPv4" width="700">  
+<img src="imagens\IPV4\headeripv4.png" alt="Header IPv4" width="700">  
    
 Este conjunto de informações não apenas facilita o roteamento, mas também possui uma importância central na cibersegurança. A manipulação dos campos do cabeçalho IPv4 é um vetor comum para ataques de negação de serviço e evasão de sistemas de segurança. Por exemplo, a falsificação do endereço de origem (IP Spoofing) permite que um atacante se mascare ou realize ataques de amplificação, sobrecarregando uma vítima com tráfego refletido, é difícil imaginar um cenário onde um bom pentester não conheça a fundo os headers dos protocolos. Os campos de fragmentação podem ser explorados para contornar firewalls e IDS que não são capazes de reassemblar corretamente os pacotes para inspeção, permitindo que payloads maliciosos passem despercebidos. Por outro lado, a inspeção rigorosa desses mesmos campos é a base de todas as defesas de rede, incluindo regras de firewall baseadas no endereço de origem/destino e a análise do campo protocolo por sistemas IDS para identificar tráfego anômalo ou malicioso, tornando o cabeçalho IPv4 o principal ponto de controle e monitoramento no tráfego de rede.
 A ideia desse tópico é explorar a fundo os campos do header IP e trazer a importância deles para a segurança. Abaixo temos algumas vulnerabilidades que podem ser exploradas, diretamente ou indiretamente, do header estudado.
@@ -31,11 +31,76 @@ Ainda no cenário ofensivo e de reconhecimento, o campo serve para técnicas de 
 **Obs:** RFC significa Request for Comments. Os padrões mencionados no texto, RFC 791 e RFC 8200 são, basicamente, o nome do documento oficial que define o IPv4 e o IPv6, respectivamente. Eles agem para padronizar e criar uma "constituição" do protocolo que precisa ser seguida por todos que desejam utilizá-las. Sendo assim, a gente pode ver os protocolos IPv4 e IPv6 como produtos desse manual.
 
 ## IHL -
-O campo Internet Header Length está localizado nos quatro bits menos significativos do primeiro byte do cabeçalho IPv4, compartilhando o octeto inicial com o campo version. Esse campo desempenha uma função arquitetural crítica, ele define a fronteira estrutural entre os metadados de roteamento e do payload do pacote. Diferente de contadores de tamanho convencionais que operam em bytes, o IHL utiliza uma unidade de medida baseada em "palavras" de 32 bits (ou 4 bytes). Essa escolha de design reflete a necessidade histórica e computacional de alinhamento de memória, garantindo que o processamento do cabeçalho seja otimizado pela CPU.
+O campo Internet Header Length está localizado nos quatro bits menos significativos¹ do primeiro byte do cabeçalho IPv4, compartilhando o octeto inicial com o campo version. Esse campo desempenha uma função arquitetural crítica, ele define a fronteira estrutural entre os metadados de roteamento e do payload do pacote. Diferente de contadores de tamanho convencionais que operam em bytes, o IHL utiliza uma unidade de medida baseada em "palavras" de 32 bits (ou 4 bytes). Essa escolha de design reflete a necessidade histórica e computacional de alinhamento de memória, garantindo que o processamento do cabeçalho seja otimizado pela CPU.
 
 A aritmética do IHL impõe limites rígidos ao protocolo. Como o valor é interpretado multiplicando-se o binário por 4, o menor valor funcional aceitável é 5 (0101), o que corresponde aos 20 bytes obrigatórios de um cabeçalho IPv4 padrão sem opções extras. No outro extremo, sendo um campo de 4 bits, seu valor máximo é 15 (1111), permitindo um cabeçalho de até 60 bytes. A diferença entre o mínimo (20 bytes) e o máximo (60 bytes) é reservada para o campo options e seu respectivo padding.
 
 Do ponto de vista da cibersegurança e da engenharia de redes, o IHL atua como um offset vital para o sistema operacional. Ele instrui a pilha TCP/IP exatamente onde iniciar a leitura dos protocolos de camada superior (como TCP ou UDP). Qualquer inconsistência neste valor gera vetores de risco: um IHL menor que 5 classifica o pacote como malformado, resultando em descarte imediato ou erros de processamento; já um IHL inflado artificialmente, sem a presença real de opções, pode indicar uma tentativa de covert channel (canal encoberto), onde um atacante utiliza o espaço excedente do cabeçalho para trafegar dados ocultos ou comandos maliciosos, evadindo inspeções superficiais de firewall que focam apenas no payload.
+
+    1. Bits menos significativos não significam menos importantes. São apenas bits que têm o menor valor numérico dentro de uma sequência binária. Eles ficam localizados na extremidade direita do número. Eles são frequentemente abreviados como LSB - Least Significant Bits
+
+## Type of Service -
+O campo ToS, que fica no segundo byte do cabeçalho, passou por algumas mudanças e não é o mesmo da versão original do header IPv4. Ele foi concebido na RFC 791 em 1981 e foi desenhado com o propósito de fornecer, aos roteadores, instruções sobre como priorizar e tratar datagramas específicos, permitindo uma gestão de tráfego que fosse além do simples "melhor esforço". Em sua concepção clássica, a estrutura dividia-se em três bits iniciais dedicados à precedência, quatro bits para três flags de serviço e dois bits reservados¹. A ideia era permitir que as aplicações especificassem suas necessidades, assim o roteador conseguiria ajudar cada uma de acordo com sua especificidade. Por exemplo, uma sessão de telnet solicitaria um baixo atraso, enquanto uma transferência FTP solicitaria uma alta vazão.
+
+Na versão de 1992, a RFC 1349 introduziu a flag de custo (C). O objetivo era permitir que o tráfego fosse roteado através de caminhos de menor custo monetário, alterando a estrutura de flags para quatro bits (DTRC) e deixando apenas o último bit do byte como reservado. É fundamental compreender que, embora a RFC 1349, tenha sido substituída por normas posteriores, muitas pilhas TCP/IP legadas e sistemas industriais ainda operam sob essa lógica, criando um cenário heterogêneo onde equipamentos antigos interpretam bits de uma maneira, enquanto a infraestrutura moderna lê de outra forma.
+
+**Visão Clássica**  
+[ PPP | D | T | R | C | 0 ]
+* **Precedence (PPP) - 3 bits**
+    * 000 (0) - Routine
+    * 001 (1) - Priority
+    * 010 (2) - Immediate
+    * 011 (3) - Flash
+    * 100 (4) - Flash Override
+    * 101 (5) - CRITIC/ECP 
+    * 110 (6) - Internetwork Control
+    * 111 (7) - Network Control
+* **ToS (DTR) - 4 bits**
+    * D (Delay) - Minimizar atraso
+        * SSH, Telnet
+    * T (Throughput) - Maximizar vazão
+        * FTP
+    * R (Reliability) - Maximizar confiabilidade
+        * SNMP, DNS zone transfers
+    * C (Cost) - Minimizar custo monetário
+        * Foi adicionado na RFC 1349
+* **Reserved - 1 bit**
+    * MBZ (Must be Zero)
+
+Na era moderna da engenharia de tráfego, a IETF declarou a obsolescência das definições anteriores através da RFC 2474 e da RFC 3168, implementando o modelo de Serviços Diferenciados (DiffServ). Nesta nova arquitetura, o antigo campo ToS foi renomeado para DS Field. Por isso não há um padrão muito claro quando pesquisamos sobre IPv4, inclusive na foto usada no começo desse documento, temos o campo ToS ainda como ToS e, ao pesquisar header IPv4, veremos que é fácil encontrar as duas nomenclaturas no campo. Acredito que essa diferença não tem um peso muito grande quando se estuda superficialmente e apenas de maneira teórica sobre o assunto, mas cada mínima vírgula fora do lugar pode ser usada por aqueles com olhos atentos e conhecimento. Os primeiros seis bits, agora chamados de Differentiated Services Code Point (DSCP), definem o comportamento salto-a-salto (PHB) que o pacote deve receber, permitindo uma granularidade de classes de serviço muito superior à antiga precedence. Os dois bits restantes, anteriormente desperdiçados ou reservados, foram reaproveitados para a notificação explícita de congestionamento (ECN), um mecanismo vital que permite aos roteadores sinalizarem congestionamento iminente marcando pacotes em vez de apenas descartá-los, possibilitando que as pontas da comunicação ajustem suas janelas de transmissão proativamente.
+
+**Visão Moderna**
+[ DSCP | ECN ]
+* **DSCP (Differentiated Services Code Point) - 6 bits**
+    * Default (CS0) - 000000
+    * EF (Expedited Forwarding) - 101110
+    * AF (Assured Forwarding) -
+    * CS (Class Selector) - CS1 a CS7 (ex. CS6 110000) 
+* **ECN (Explicit Congestion Notification) - 2 bits**
+    * 00 - Non-ECT
+        * Não suporta ECN
+    * 01 - ECT(1)
+        * ECN-Capable Transport
+    * 10 - ECT(0)
+        * ECN-Capable Transport
+    * 11 - CE
+        * Congestion Experienced. Marcado pelo roteador quando a fila está cheia. Dessa forma, o receptor vê isso e avisa ao remetente para diminuir a velocidade. (Esse aviso é feito via flag TCP CWR/ECE)
+
+Agora a parte mais atrativa, olhando pelo lado da segurança ofensiva, a complexidade histórica desse campo abre vetores de ataque sofisticados, muitas vezes negligenciados por firewalls que não realizam inspeção profunda nesses bits. O uso mais sutil envolve a criação de canais encobertos, onde um atacante pode manipular os seis bits do campo DSCP ou as antigas flags da RFC 1349 para exfiltrar dados ou enviar comandos de controle bit a bit, invisíveis a logs de aplicação convencionais. Além disso, a discrepância na implementação de stacks TCP/IP permite o reconhecimento passivo de sistemas operacionais (a gente também chama isso de OS Fingerprinting), tendo em vista que diferentes sistemas definem valores ToS padrão distintos. Por exemplo, resposta com precedência elevada podem denunciar roteadores de borda específicos ou sistemas legados. 
+
+Ainda do ponto de vista ofensivo, existe o risco de ataques de DoS via amplificação de QoS. Um atacante pode facilmente forjar pacotes com marcações de alta prioridade, fazendo com que o seu tráfego malicioso fure a fila dos roteadores, degradando ou bloqueando o tráfego legítimo sem necessariamente saturar a largura de banda total do link. Também, em ambientes mistos, onde coexistem implementações da RFC 1349 e DiffServ, a manipulação do bit de custo pode induzir um roteamento assimétrico, onde o tráfego de ataque segue um caminho físico diferente da resposta, potencialmente evadindo sensores de segurança posicionados em rotas principais.
+
+Tenho uma facilidade maior em olhar pelo lado de quem ataca, mas é de vital importância sempre dar atenção aos dois lados da moeda. Afinal, como especialista de cibersegurança eu desejo conseguir evitar esse tipo de ataque onde eu atue. Desse modo, a mitigação dos ataques vindos desse campo vão exigir de nós uma postura de confiança zero em relação às marcações de QoS vindas de redes externas. A prática recomendada de traffic scrubbing² envolve a reescrita ou o zeramento do campo DS em todos os pacotes que entram pelo perímetro da rede, neutralizando canais encobertos e impedindo o abuso de prioridade. Paralelamente, a monitoria de anomalias no campo ECN pode servir como um sistema de alerta precoce para ataques volumétricos, indicando saturação de buffers antes mesmo que ocorra perda de pacotes significativa. Portanto, o domínio sobre o byte ToS não é só uma questão de engenharia de tráfego, mas um componente essencial na análise forense de rede e no desenvolvimento de mecanismos robustos de defesa.
+
+Dissecar e mostrar como cada um dos possíveis ataques mencionados acima não é o foco do documento atual, mas para dar um ponta pé inicial naqueles que não conseguem ver isso acontecendo na prática. Vamos explorar um pouco mais o ataque DoS comentado acima.
+
+<img src="imagens\IPV4\DSCPEFd.png" alt="Header IPv4" width="700"> 
+<img src="imagens\IPV4\DSCPEFs.png" alt="Header IPv4" width="700"> 
+
+No exemplo acima forjei um pacote com DSCP EF, representado pelo hex 0xB8. O comando usado foi "ping -c 3 -Q 184 192.168.1.109", mas existem diversas ferramentas que permitem esse tipo de manipulação de pacote (hping3). Olhando para esse pacote de maneira destrutiva e para cenários hipotéticos (ou nem tanto) vejamos como isso funciona no mundo real. Roteadores corporativos e de provedores configuram uma fila especial chamada LLQ (Low Latency Queue) ou priority queue. Essa fila é reservada para tráfego sensível a atraso, como VoIP ou vídeo em tempo real. A regra do roteador é, "se houver algo na fila EF, envie imediatamente e 'pare' todo o resto". Ou seja, se você iniciar um flood (como um UDP flood ou ICMP flood) setado com 0xB8 (EF), você não precisa saturar o link inteiro para causar danos. Você só precisa saturar a largura de banda reservada para a fila de prioridade :D. Dessa forma, o roteador ficará tão ocupado tentando despachar seus pacotes "da fila preferencial" que o tráfego de voz legítimo começará a picotar ou cair, e o tráfego normal ficará em starvation (ou seja, faminto, já que o roteador nunca vai ter tempo livre para atendê-lo). É um DoS cirúrgico que paralisa a operação crítica com menos volume de dados. Se você ficou curioso para saber como eu cheguei no número 184, pesquise sobre dscp values table, saiba de que maneira o valor decimal e o valor binário conversam para chegar no número usado para manipular esse campo.
+
+    1. Esses bits reservados que encontramos em diversos lugares quando estamos estudando arquitetura de redes dizem respeito a padrões de segurança e engenharia. Na criação de estruturas tão complexas como a que estamos vendo, era, e ainda é, impossível prever com exatidão nossa necessidade anos a frente. A tecnologia evolui exponencialmente e esses espaços são deixados para que, caso haja a necessidade, alterações possam ser feitas sem quebrar a internet já existente. É muito mais fácil modificar a utilidade de um bit que já está lá do que criar uma estrutura nova e colocar todo o mundo nesse padrão. Se você, assim como eu, não se contenta com pouca informação, recomendo que estude mais a fundo o conceito de retrocompatibilidade!
+    2. É, essencialmente, o processo de higienização de pacotes de rede. É uma técnica defensiva onde o tráfego que entra é inspecionado e toma um banho para entrar na rede limpinho. Esse tipo de processo tem como objetivo remover dados maliciosos, malformados ou não conformes, antes que esse tráfego atinja o destino final. Isso pode ser burlado com técnicas de tunelamento :D.
 
 ## Fragment Offset -
 O campo Fragment Offset foi concebido juntamente com o próprio internet protocol (IP) na década de 1970. Esse conceito surgiu da necessidade de interoperabilidade entre redes com diferentes capacidades. No final dos anos 1970 e início dos anos 1980, o protocolo IP foi projetado para rodar sobre diversas tecnologias de camada de enlace. O problema é que cada uma dessas tecnologias impõe um maximum transmission unit (MTU), ou seja, um tamanho máximo de pacote. Isso nos levou a pensar no que fazer caso um datagrama gerado em uma rede com um MTU alto precisasse atravessar uma rede com um MTU baixo. Os arquitetos do IP, principalmente Jon Postel e Vint Cerf, decidiram que os roteadores intermediários teriam a responsabilidade de quebrar, em outras palavras, fragmentar o pacote em pedaços menores. Para permitir que o destino remontasse os pedaços na ordem correta, foi criado o campo fragment offset, ele indica a posição de início dos dados contidos naquele fragmento em relação ao payload do datagrama original.
@@ -53,7 +118,7 @@ Daí, é só dividir o payload total pelos fragmentos de 1480 bytes: 5000 dividi
 3. O Terceiro Fragmento começa no byte 2960 (1480 + 1480). Seu deslocamento é 2960 / 8 = 370.
 4. O último fragmento começa no byte 4440 (2960 + 1480) e carrega os 560 bytes restantes. Seu deslocamento é 4440 / 8 = 555.
 
-<img src="imagens\calcfo1.png" alt="Calculo F.O." width="500">
+<img src="imagens\IPV4\calcfo1.png" alt="Calculo F.O." width="500">
 
 O fragment offset é, portanto, o ponto de partida dos dados de cada fragmento, expresso em múltiplos de 8. Ele informa ao receptor exatamente onde o bloco de dados daquele pacote se encaixa no payload original de 5000 bytes para que ele possa ser reconstruído corretamente.
 
