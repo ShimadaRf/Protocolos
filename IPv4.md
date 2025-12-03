@@ -172,3 +172,50 @@ Daí, é só dividir o payload total pelos fragmentos de 1480 bytes: 5000 dividi
 O fragment offset é, portanto, o ponto de partida dos dados de cada fragmento, expresso em múltiplos de 8. Ele informa ao receptor exatamente onde o bloco de dados daquele pacote se encaixa no payload original de 5000 bytes para que ele possa ser reconstruído corretamente.
 
 Apesar de sua engenhosidade, o mecanismo de fragmentação do IPv4 introduz uma complexidade indesejada, gerando sobrecarga de processamento nos roteadores e no host de destino. No contexto da cibersegurança, o fragment offset é fundamental em técnicas de evasão de IDS/IPS, como o tiny fragment attack e a sobreposição maliciosa de fragmentos, também conhecida como overlap. O manuseio inconsistente da remontagem em diferentes stacks TCP/IP é uma vulnerabilidade conhecida, sendo um dos motivos pelos quais o IPv6 praticamente eliminou a fragmentação intermediária, aderindo estritamente ao princípio end-to-end.
+
+## Time to Live - 
+O campo TTL é um contador de 8 bits. Ele atua como um mecanismo de segurança para limitar a vida útil de um datagrama na rede. A existência do TTL é crítica para evitar o problema de count-to-infinity em redes de comutação de pacotes¹. Sem esse campo, um erro na configuração das tabelas de roteamento faria com que pacotes circulassem indefinidamente entre roteadores, consumindo largura de banda e poder de processamento até saturar a rede. O que o TTL garante é que todos os pacotes tenham um morte caso se percam em caminhos diversos.
+
+Originalmente, ou seja, na visão da RFC 791, o TTL foi definido como uma unidade de tempo em segundos. A especificação ditava que se um pacote ficasse num roteador por mais de 1 segundo, o campo deveria ser decrementado pelo tempo gasto. Mas hoje em dia ele já não funciona mais assim. Com a RFC 1812, a prática se baseia em decrementar o TTL em 1 unidade a cada hop. Hoje, o TTL é universalmente tratado como um contador de saltos, e não como um cronômetro.
+
+O ciclo de vida do pacote pode ser resumido em 3 fases. A primeira é a inicialização, onde o sistema operacional (kernel) define o valor inicial do TTL ao criar o soquete bruto ou encapsular o datagrama. Esse valor é configurável via parâmetros de kernel. A segunda fase é o processamento em trânsito. Quando um roteador recebe um pacote, ele executa a seguinte lógica simplificada:
+
+    - Verifica a integridade do cabeçalho (checksum)
+    - Analisa o valor do TTL
+    - TTL novo = TTL atual - 1
+    - Recálculo do checksum
+
+A terceira e última fase é a condição de parada. Se o roteador for menor ou igual a 0, ele deve ser descartado. O roteador não encaminha um pacote com TTL zero.
+
+A interação do TTL não é isolada, ela depende intrinsecamente do protocolo auxiliar ICMP. Quando um pacote é descartado por exaustão de TTL, o roteador deve informar a origem para evitar buracos negros na rede. O roteador gera um pacote ICMP encapsulando o cabeçalho IP original junto com os primeiros 64 bits do payload original (para que a origem saiba qual conexão falhou) e o envia de volta ao IP de origem.
+
+O campo TTL é amplamente usado por ferramentas para detecção de rota. Um exemplo é o traceroute. O traceroute não rastreia um pacote. Ele envia vários pacotes suicidas. Como o roteador descarta e envia uma resposta ICMP de volta para a origem, ele consegue montar um mapa do percurso que o pacote percorre.
+
+Com os 8 bits de espaço, temos um TTL com um máximo teórico de 255. Esse valor é até considerado grande quando vemos que estudos de topologia da internet monstraram que o valor médio da internet raramente excede 30 hops. Como já foi dito, embora o valor do TTL possa ser alterado, ele é um ótimo indício de um SO pois esses seguem padrões pré-definidos de TTL. Linux, macOS/iOS e android têm um padrão de 64 no campo TTL enquanto o windows tem 128. Com isso conseguimos saber que, por exemplo, se um pacote chega na nossa maquina com um TTL de 109 é, provavelmente, advindo de um windows. 
+
+    1. Arquitetura de comunicação digital onde os dados são segmentados em unidades discretas e independentes (pacotes), contendo informações de cabeçalho para roteamento e controle.
+
+## Protocol - 
+Esse campo é um identificador numérico de 8 bits que atua como o mecanismo primário de demultiplexação¹ entre a camada de rede e a camada de transporte. No modelo OSI ou TCP/IP, o encapsulamento aninha dados como uma boneca russa. Quando um datagrama IP chega ao seu destino e o cabeçalho IP é processado e removido, o sistema operacional precisa saber o módulo de protocolo apropriado para o qual deve entregar o payload restante. O campo protocol diz quais são os dados brutos que vêm a seguir. Sem este campo, a pilha IP não saberia distinguir se o payload é um segmento TCP, um datagrama UDP, ou só uma mensagem de controle.
+
+Se o valor no campo protocol apontar para um número para o qual o host receptor não possui um handler registrado, o pacote é descartado e a pilha IP gera uma mensagem de erro ICMP de volta ao remetente. Nessa mensagem veremos provavelmente o código 2 para protocol unreachable. Esse mecanismo é fundamental para diagnósticos de rede, informando ao remetente que, embora o host esteja ativo, ele não fala a linguagem de transporte solicitada.
+
+A IANA gerencia a lista de protocol numbers. Na tabela abaixo coloquei alguns dos protocolos organizados pelo seu valor decimal para conseguirmos ver os valores definidos pela IANA para alguns deles, mas no linux é só ir em /etc/protocols caso queira encontrar outro.
+
+|Decimal|Hex|Palavra|Descrição|
+|:----:|:----:|:----:|----|
+|1|0x01|ICMP|Internet Control Message Protocol|
+|2|0x02|IGMP|Internet Group Management Protocol. Gerenciamento de multicast. Alvo comum para ataques de DoS ou mapeamento de rede passivo|
+|4|0x04|IP-in-IP|IP Encapsulation within IP. Tunelamento simples. Usado em redes legadas ou configuração de túnel manual|
+|6|0x06|TCP|Transmission Control Protocol|
+|17|0x11|UDP|User Datagram Protocol|
+|41|0x29|IPv6|IPv6 Encapsulation. Não é erro. Ele só indica que o payload do pacote IPv4 é, na verdade, um pacote IPv6 (ex: túneis 6to4, ISATAP)|
+|47|0x2F|GRE|Generic Routing Encapsulation. Protocolo de tunelamento não criptografado|
+|50|0x32|ESP|Encapsulating Security Payload. IPSec (dados criptografados)|
+|51|0x33|AH|Authentication Header. IPSec (apenas integridade/autenticação, sem criptografia)|
+|89|0x59|OSPF|Open Shortest Path First. Protocolo de roteamento dinâmico interior gateway protocol|
+|255|0xFF|Reserved|Reservado pela IANA. Se aparecer em um sniffer, é provável que seja tráfego gerado customizadamente|
+
+O campo é um dos 5 pilares da tupla de filtragem em firewalls stateless (Os outros 4 são srcIP, dstIP, srcport, dstport). Regras comuns de segurança frequentemente bloqueiam tudo, liberando apenas TCP e UDP. Para casos de pentest onde não se tem acesso prévio as configurações do firewall, vale estudar a rotina da empresa e entender as necessidades. Bloquear indiscriminadamente protocolos não TCP/UDP impede o funcionamento, por exemplo, do ICMP. Isso quebra algumas ferramentas que dependem de mensagens vindas do ICMP ou até mesmo o path mtu discovery, causando conexões que travam misteriosamente ou lentidão. Isso pode causar black holing de conexões. Conhecer o cenário da empresa te faz entender as necessidades de uso dela e possivelmente encontrar brechas nessa maneira de agir de alguns especialistas de cibersegurança que bloqueiam tudo e vão liberando de acordo com as necessidades. Uma técnica para contornar firewalls que filtram com base no campo protocol é o tunelamento, eles encapsulam protocolos dentro de outros. IP-over-UDP, por exemplo, protocolos como QUIC, WireGuard, VXLAN e OpenVPN encapsulam seus payloads dentro de um pacote UDP. Assim, um firewall analisando apenas o campo protocol verá UDP. Ele não consegue saber se dentro daquele UDP tem tráfego web, ou túnel VPN ou tráfego malicioso, a não ser que ele realize DPI (deep packet inspection) para analisar o payload da camada de aplicação.
+
+    1. É o processo lógico onde o sistema operacional utiliza o identificador numérico (campo protocol) para separa o tráfego convergente recebido na camada de rede (IP) e encaminhá-lo ao módulo de software específico da camada superior para processamento.
