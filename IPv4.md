@@ -219,3 +219,46 @@ A IANA gerencia a lista de protocol numbers. Na tabela abaixo coloquei alguns do
 O campo é um dos 5 pilares da tupla de filtragem em firewalls stateless (Os outros 4 são srcIP, dstIP, srcport, dstport). Regras comuns de segurança frequentemente bloqueiam tudo, liberando apenas TCP e UDP. Para casos de pentest onde não se tem acesso prévio as configurações do firewall, vale estudar a rotina da empresa e entender as necessidades. Bloquear indiscriminadamente protocolos não TCP/UDP impede o funcionamento, por exemplo, do ICMP. Isso quebra algumas ferramentas que dependem de mensagens vindas do ICMP ou até mesmo o path mtu discovery, causando conexões que travam misteriosamente ou lentidão. Isso pode causar black holing de conexões. Conhecer o cenário da empresa te faz entender as necessidades de uso dela e possivelmente encontrar brechas nessa maneira de agir de alguns especialistas de cibersegurança que bloqueiam tudo e vão liberando de acordo com as necessidades. Uma técnica para contornar firewalls que filtram com base no campo protocol é o tunelamento, eles encapsulam protocolos dentro de outros. IP-over-UDP, por exemplo, protocolos como QUIC, WireGuard, VXLAN e OpenVPN encapsulam seus payloads dentro de um pacote UDP. Assim, um firewall analisando apenas o campo protocol verá UDP. Ele não consegue saber se dentro daquele UDP tem tráfego web, ou túnel VPN ou tráfego malicioso, a não ser que ele realize DPI (deep packet inspection) para analisar o payload da camada de aplicação.
 
     1. É o processo lógico onde o sistema operacional utiliza o identificador numérico (campo protocol) para separa o tráfego convergente recebido na camada de rede (IP) e encaminhá-lo ao módulo de software específico da camada superior para processamento.
+
+## Header Checksum -
+Esse campo é um componente de 16 bits, projetado com um único propósito, garantir a integridade do próprio cabeçalho durante seu trânsito pela rede. Ele funciona como um selo de verificação, permitindo que cada roteador no caminho valide rapidamente se o cabeçalho foi corrompido por erros de transmissão. É crucial entender que seu escopo é estritamente limitado ao cabeçalho, ele não oferece qualquer proteção para os dados do payload, uma responsabilidade delegada aos protocolos da camada de transporte, como TCP e UDP, que possuem seus próprios mecanismos de checksum.
+
+O algoritmo de cálculo é uma soma de complemento de um (one's complement sum) de todas as palavras de 16 bits do cabeçalho. O processo é o seguinte:
+1.  **Inicialização:** O campo header checksum é preenchido com zeros.
+2.  **Soma:** O cabeçalho é tratado como uma sequência de inteiros de 16 bits, que são somados.
+3.  **Wrap-around:** Se a soma exceder 16 bits, o bit de estouro (carry) é adicionado de volta ao resultado. Este passo é repetido até que não haja mais estouros.
+4.  **Inversão:** O resultado final é invertido bit a bit (complemento de um) e inserido no campo.
+
+Quando um roteador recebe o pacote, ele realiza o mesmo cálculo sobre o cabeçalho recebido (incluindo o valor do checksum). Se o cabeçalho estiver intacto, o resultado final da soma (após o wrap-around) será uma sequência de 16 bits todos iguais a 1 (0xFFFF em hexadecimal), o que confirma a integridade. Qualquer outro resultado indica corrupção, e o pacote é descartado.
+
+Uma característica fundamental e intencional do design é a eficiência. Como o campo TTL é decrementado em cada hop, o checksum precisa ser recalculado a cada salto. O algoritmo de complemento de um permite um recálculo incremental extremamente rápido. Em vez de refazer a soma inteira, o roteador pode simplesmente subtrair o valor antigo do TTL, adicionar o novo valor e ajustar o checksum, economizando ciclos de CPU.
+
+Do ponto de vista da cibersegurança, o header checksum é paradoxal. Por um lado, ele é um mecanismo de integridade fraco e facilmente contornável. Como o algoritmo é público e computacionalmente barato, qualquer atacante que modifique o cabeçalho (por exemplo, em um ataque de IP Spoofing) pode simplesmente recalcular o checksum correto para o cabeçalho forjado. Isso torna o checksum inútil para detectar modificações maliciosas intencionais. Um firewall ou IDS nunca pode confiar no checksum como prova de que o cabeçalho é autêntico ou benigno.
+
+Por outro lado, a manipulação do checksum pode ser usada em ataques DoS contra equipamentos de rede. Roteadores e firewalls dependem do processamento rápido de pacotes. Um atacante pode inundar um dispositivo com pacotes que possuem checksums inválidos. Embora o dispositivo simplesmente descarte esses pacotes, o ato de verificar o checksum de cada um consome recursos da CPU. Em altas taxas de pacotes, isso pode sobrecarregar o processador do dispositivo, degradando sua performance para o tráfego legítimo, um ataque conhecido como checksum flood.
+
+Além disso, o campo pode ser explorado para técnicas de fingerprinting. Diferentes sistemas operacionais e dispositivos de rede podem ter implementações de pilha TCP/IP que tratam pacotes com checksums inválidos de maneiras sutilmente distintas. Alguns podem descartar silenciosamente, outros podem registrar um erro, e outros ainda podem ter comportamentos anômalos. Um atacante pode enviar pacotes com checksums incorretos para um alvo e observar a resposta (ou a falta dela) para inferir informações sobre o sistema operacional ou o hardware subjacente.
+
+## Source Address
+## Destination Address
+## Options
+## Padding
+Esse campo é frequentemente negligenciado em estudos superficiais, visto apenas como um espaço vazio ou algo assim. Inclusive, em um dos livros usados como fonte aqui, ele nem é mencionado. 
+
+O padding é um campo de tamanho variável inserido no final do cabeçalho IPv4, especificamente após o campo de opções e antes do início do payload, como vemos na imagem que iniciou esse arquivo. A necessidade imperativa deste campo é puramente matemática e arquitetural, derivada da granularidade de processamento das CPUs de 32 bits da época em que o protocolo foi desenhado, na RFC 791. O processamento de memória é otimizado quando os dados estão alinhados em fronteiras de palavras específicas. 
+
+Voltando um pouco, no IPv4, a unidade fundamental de medida para o tamanho do cabeçalho é a palavra de 32 bits. O campo IHL não conta bytes, ele conta palavras de 32 bits, ou seja:
+
+$$\text{Tamanho do Cabeçalho} = IHL \times 32 \text{ bits}$$
+
+Se o campo options tiver um tamanho que não resulte em um múltiplo perfeito de 32 bits, o cabeçalho terminaria, de certa forma, quebrado em relação à memória. O trabalho do padding é preencher essa lacuna para garantir que o cabeçalho sempre termine em uma fronteira de 32 bits, permitindo que o payload comece alinhado. O valor dos bits de preenchimento devem ser 0, como foram definidos pela RFC 791. O campo padding só existe se o campo de opções for utilizado, e o tamanho do padding varia de 0 a 3 bytes.
+
+Gosto de ver o padding como um espaço de armazenamento não monitorado. Como a maioria dos firewalls simples apenas verifica cabeçalhos padrão e ignora conteúdo do padding (assumindo que são zeros), este campo se torna um vetor ideal para esteganografia de rede. Mas vou deixar para dissertar sobre isso no final desse campo. 
+
+Além da ideia citada acima, já li sobre vazamento de memória e OS fingerprinting usando o campo padding. A ideia é, se o sistema operacional aloca memória para o pacote e preenche o cabeçalho, mas esquece de escrever zeros explicitamente no padding, os dados que estavam anteriormente naquela região da memória RAM (ou seja, lixo de memória/kernel heap) são enviados pela rede. Isso pode acabar vazando pedaços de senhas, nomes de usuários ou código interno do kernel. Padrões específicos de como o padding é aplicado podem servir como uma assinatura passiva para identificar sistemas operacionais antigos ou dispositivos embarcados vulneáveis.
+
+Mas aqui pensamos em possibilidades onde a sanitização foi considerada trivial. A regra da RFC é bem restrita com relação ao padding, qualquer bit nesse campo que seja diferente de 0 é uma anomalia. Pessoalmente eu não tenho experiência com suricata IDS, mas li que é bem mais fácil do que imaginei escrever uma regra de inspeção de uma área do cabeçalho IP. Algo do tipo, se o IHL for maior que 5 (o que indica a presença de options/padding), o sistema deve verificar se os bytes finais do cabeçalho são nulos. Ou uma normalização forçada, o dispositivo intermediário de rede intercepta o pacote, analisa o cabeçalho IP e reescreve forçosamente o campo padding para tudo zero antes de encaminhar o pacote.
+
+Voltando para a esteganografia que comentei. 
+
+## Payload
