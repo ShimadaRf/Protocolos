@@ -259,6 +259,10 @@ Além da ideia citada acima, já li sobre vazamento de memória e OS fingerprint
 
 Mas aqui pensamos em possibilidades onde a sanitização foi considerada trivial. A regra da RFC é bem restrita com relação ao padding, qualquer bit nesse campo que seja diferente de 0 é uma anomalia. Pessoalmente eu não tenho experiência com suricata IDS, mas li que é bem mais fácil do que imaginei escrever uma regra de inspeção de uma área do cabeçalho IP. Algo do tipo, se o IHL for maior que 5 (o que indica a presença de options/padding), o sistema deve verificar se os bytes finais do cabeçalho são nulos. Ou uma normalização forçada, o dispositivo intermediário de rede intercepta o pacote, analisa o cabeçalho IP e reescreve forçosamente o campo padding para tudo zero antes de encaminhar o pacote.
 
-Voltando para a esteganografia que comentei. 
+Voltando para a esteganografia que comentei. Prefiro explicar e demonstar em um vídeo.
+
+<a href="https://www.youtube.com/watch?v=0vWBSKhm0Ic" target="_blank">
+ <img src="imagens\IPV4\paddingvd.png" alt="Assista ao vídeo" width="250" />
+</a>
 
 ## Payload
