@@ -1,5 +1,5 @@
 # Header IPv4 -
-## Visão Geral -
+## 1. Visão Geral -
 O cabeçalho IPv4 é a parte frontal, essencial e compacta de cada datagrama que trafega pela internet, agindo como o envelope que guia a informação da origem ao destino. Sua estrutura básica é de 20 bytes e contém os dados cruciais que definem como o pacote deve ser roteado. Os primeiros campos incluem a versão, sempre 4 para este protocolo, e o IHL (Internet Header Length), que informa o tamanho total do cabeçalho. Em seguida, o campo tipo de serviço permite que roteadores priorizem o tráfego conforme a necessidade. O comprimento total indica o tamanho completo do pacote, enquanto os campos de identificação, flags e fragment offset são dedicados à fragmentação, permitindo que pacotes grandes sejam divididos para passar por redes com limitações de tamanho e, depois, remontados corretamente no destino. O TTL (time to live) é um contador de hops que evita que pacotes circulem em loops infinitos, ele é decrementado em cada roteador e o pacote é descartado ao chegar a zero. O campo protocolo é vital, pois informa qual protocolo da camada de transporte (como TCP ou UDP) está contido na área de dados, e o Checksum é usado para garantir a integridade do próprio cabeçalho. Por fim, temos os campos de endereços IP de origem e destino, cada um com 32 bits, que definem quem enviou e quem deve receber o pacote.  
 O header segue o padrão de formação abaixo:
   
@@ -19,7 +19,9 @@ Os campos de fragmentação (identification, flags e fragment offset) representa
 5. Exploração das Opções  
 O campo options, embora menos comum, é vulnerável. Se a opção source routing estiver habilitada, um atacante pode especificá-la para forçar o pacote a seguir um caminho específico na rede, ignorando as regras de roteamento padrão e potencialmente acessando segmentos de rede protegidos.
 
-## Version -
+## 2. Campos -
+
+### 2.1 Version -
 O version é o primeiro campo do cabeçalho de um datagrama IP, ele tem 4 bits em seu campo, e possui uma função crítica na arquitetura de rede, ele determina a sintaxe e a semântica do restante do cabeçalho do datagrama. Especificamente, o valor contido no campo version indica a versão do protocolo IP à qual o datagrama em questão adere, e essa informação é fundamental para qualquer nó de rede (roteadores, firewalls e o hospedeiro destinatário) que receba o pacote, pois a estrutura e o significado dos campos subsequentes no cabeçalho variam drasticamente entre as versões. Para o IPv4, o campo version contém o valor binário 0100 (decimal 4), o que instrui o dispositivo a interpretar o datagrama de acordo com o formato estabelecido pela RFC 791 e suas extensões, enquanto para o IPv6, o campo contém o valor binário 0110 (decimal 6), exigindo a interpretação da estrutura simplificada e modificada definida pela RFC 8200. Ao ser o primeiro campo a ser examinado, o version permite que os dispositivos de processamento de pacotes despachem o datagrama para o módulo de software ou hardware apropriado para análise e encaminhamento, o que é um componente chave do mecanismo de fast-path ou forwarding dentro dos roteadores, minimizando a latência e garantindo a interoperabilidade. A existência deste campo na posição inicial viabiliza a transição gradual e a coexistência de múltiplas versões do IP na infraestrutura global da Internet, permitindo que roteadores inspecionem o campo e decidam se o datagrama deve ser encaminhado (potencialmente via tunnel), processado nativamente ou descartado se a versão não for suportada, assegurando a evolução contínua da rede sem interrupção.
 
 Embora o campo de versão no cabeçalho IPv4 ocupe apenas 4 bits e pareça ter uma função estática, ele desempenha um papel tático interessante na cibersegurança quando manipulado ou analisado profundamente. Do ponto de vista defensivo, esse campo atua como o primeiro filtro de sanidade em qualquer dispositivo de rede. Como a especificação exige que o valor seja estritamente 4, firewalls e sistemas de detecção de intrusão (IDS) utilizam essa verificação como uma forma de triagem rápida. Se um pacote chega com qualquer valor diferente, ele pode ser descartado imediatamente no nível do hardware ou do driver, economizando ciclos da CPU que seriam gastos analisando o restante do cabeçalho ou a carga útil. Portanto, a defesa utiliza a imutabilidade desse campo para garantir a eficiência e detectar anomalias. Um alerta de "versão de IP inválida" em um monitoramento é **quase** sempre um indicador de alta fidelidade de que alguém está utilizando ferramentas de injeção de pacotes customizados na rede, pois sistemas operacionais legítimos não cometem esse erro naturalmente.
@@ -30,7 +32,7 @@ Ainda no cenário ofensivo e de reconhecimento, o campo serve para técnicas de 
 
 **Obs:** RFC significa Request for Comments. Os padrões mencionados no texto, RFC 791 e RFC 8200 são, basicamente, o nome do documento oficial que define o IPv4 e o IPv6, respectivamente. Eles agem para padronizar e criar uma "constituição" do protocolo que precisa ser seguida por todos que desejam utilizá-las. Sendo assim, a gente pode ver os protocolos IPv4 e IPv6 como produtos desse manual.
 
-## IHL -
+### 2.2 IHL -
 O campo Internet Header Length está localizado nos quatro bits menos significativos¹ do primeiro byte do cabeçalho IPv4, compartilhando o octeto inicial com o campo version. Esse campo desempenha uma função arquitetural crítica, ele define a fronteira estrutural entre os metadados de roteamento e do payload do pacote. Diferente de contadores de tamanho convencionais que operam em bytes, o IHL utiliza uma unidade de medida baseada em "palavras" de 32 bits (ou 4 bytes). Essa escolha de design reflete a necessidade histórica e computacional de alinhamento de memória, garantindo que o processamento do cabeçalho seja otimizado pela CPU.
 
 A aritmética do IHL impõe limites rígidos ao protocolo. Como o valor é interpretado multiplicando-se o binário por 4, o menor valor funcional aceitável é 5 (0101), o que corresponde aos 20 bytes obrigatórios de um cabeçalho IPv4 padrão sem opções extras. No outro extremo, sendo um campo de 4 bits, seu valor máximo é 15 (1111), permitindo um cabeçalho de até 60 bytes. A diferença entre o mínimo (20 bytes) e o máximo (60 bytes) é reservada para o campo options e seu respectivo padding.
@@ -39,7 +41,7 @@ Do ponto de vista da cibersegurança e da engenharia de redes, o IHL atua como u
 
     1. Bits menos significativos não significam menos importantes. São apenas bits que têm o menor valor numérico dentro de uma sequência binária. Eles ficam localizados na extremidade direita do número. Eles são frequentemente abreviados como LSB - Least Significant Bits
 
-## Type of Service -
+### 2.3 Type of Service -
 O campo ToS, que fica no segundo byte do cabeçalho, passou por algumas mudanças e não é o mesmo da versão original do header IPv4. Ele foi concebido na RFC 791 em 1981 e foi desenhado com o propósito de fornecer, aos roteadores, instruções sobre como priorizar e tratar datagramas específicos, permitindo uma gestão de tráfego que fosse além do simples "melhor esforço". Em sua concepção clássica, a estrutura dividia-se em três bits iniciais dedicados à precedência, quatro bits para três flags de serviço e dois bits reservados¹. A ideia era permitir que as aplicações especificassem suas necessidades, assim o roteador conseguiria ajudar cada uma de acordo com sua especificidade. Por exemplo, uma sessão de telnet solicitaria um baixo atraso, enquanto uma transferência FTP solicitaria uma alta vazão.
 
 Na versão de 1992, a RFC 1349 introduziu a flag de custo (C). O objetivo era permitir que o tráfego fosse roteado através de caminhos de menor custo monetário, alterando a estrutura de flags para quatro bits (DTRC) e deixando apenas o último bit do byte como reservado. É fundamental compreender que, embora a RFC 1349, tenha sido substituída por normas posteriores, muitas pilhas TCP/IP legadas e sistemas industriais ainda operam sob essa lógica, criando um cenário heterogêneo onde equipamentos antigos interpretam bits de uma maneira, enquanto a infraestrutura moderna lê de outra forma.
@@ -102,7 +104,7 @@ No exemplo acima forjei um pacote com DSCP EF, representado pelo hex 0xB8. O com
     1. Esses bits reservados que encontramos em diversos lugares quando estamos estudando arquitetura de redes dizem respeito a padrões de segurança e engenharia. Na criação de estruturas tão complexas como a que estamos vendo, era, e ainda é, impossível prever com exatidão nossa necessidade anos a frente. A tecnologia evolui exponencialmente e esses espaços são deixados para que, caso haja a necessidade, alterações possam ser feitas sem quebrar a internet já existente. É muito mais fácil modificar a utilidade de um bit que já está lá do que criar uma estrutura nova e colocar todo o mundo nesse padrão. Se você, assim como eu, não se contenta com pouca informação, recomendo que estude mais a fundo o conceito de retrocompatibilidade!
     2. É, essencialmente, o processo de higienização de pacotes de rede. É uma técnica defensiva onde o tráfego que entra é inspecionado e toma um banho para entrar na rede limpinho. Esse tipo de processo tem como objetivo remover dados maliciosos, malformados ou não conformes, antes que esse tráfego atinja o destino final. Isso pode ser burlado com técnicas de tunelamento :D.
 
-## Total Length - 
+### 2.4 Total Length -
 O campo total length ocupa os 16 bits subsequentes ao campo ToS, este valor dita ao kernel do sistema operacional exatamente onde o datagrama termina na memória. Ele vai nos dizer o tamanho total do datagrama IP, incluindo o próprio cabeçalho quanto os dados transportados. Por ele ocupar 16 bits dentro do cabeçalho, com essa quantidade ele consegue representar valores entre 0 e 65.535. Vale lembrar que, embora os bits permitam um valor 0, um pacote IP válido nunca pode ser menor que o seu próprio cabeçalho. Esse limite não é arbitrário, ele vem da projeção inicial do IPv4, veio de uma época de recursos restritos e precisava de uma forma compacta e eficiente de descrever o tamanho do pacote.
 
 No campo ofensivo, a manipulação desse campo é usada para a criação de canais encobertos e evasão de detecção. Existe uma discrepância inerente entre a camada 2 (enlace) e a camada 3 (rede). O padrão ethernet exige um tamanho mínimo de quadro, muitas vezes forçando a inserção de padding no final do quadro se o pacote IP for muito pequeno. É crucial compreender que, para a pilha TCP/IP, qualquer dado que exista fisicamente no fio além do byte indicado pelo total length é irrelevante.
@@ -127,7 +129,7 @@ Um comportamento, talvez não tão intuitivo, para se observar é o processo de 
 
     1. Um NOP sled é uma sequência de instruções no operation, ou seja, que não realizam nenhuma ação útil. Ela é usada para aumentar a probabilidade de sucesso de uma exploração de vulnerabilidade. A sequência NOP cria um tipo de caminho de escorregamento que, independentemente de onde o fluxo de execução "pousar" dentro do sled, eventualmente o guiará para o payload infectado localizado no final.
 
-## Identification - 
+### 2.5 Identification -
 O campo possui 16 bits e a sua criação fundamentou-se na necessidade de desambiguação. Em um fluxo contínuo de dados entre uma origem e um destino, o identification serve como a assinatura digital efêmera que distingue um pacote específico de seus antecessores e sucessores imediatos, permitindo que o receptor compreenda a individualidade de cada unidade de transmissão.
 
 Historicamente, a especificação original da RFC 791 impunha uma rigidez semântica a este campo, exigindo que ele fosse único para cada datagrama enviado dentro de um intervalo de tempo determinado pelo maximum segment lifetime. Isso transformava o ID em uma variável de estado crítico mantida pelo kernel do sistema operacional. Para cumprir essa diretriz, as primeiras implementações de pilhas de rede adotaram contadores globais e incrementais. Nessa abordagem, o sistema operacional mantinha uma variável estática na memória que era incrementada linearmente a cada novo pacote gerado, independentemente de destino ou do protocolo encapsulado. Embora computacionalmente eficiente, essa metodologia transformou o campo identification em um canal lateral de vazamento de informação, expondo a taxa de transmissão interna do host e permitindo vetores de ataques sofisticados, como o idle scan, baseados puramente na previsibilidade aritmética deste campo.
@@ -143,7 +145,7 @@ Hoje o campo identification opera em um estado de dualidade, é um vestígio leg
     1. São datagramas que não podem ser fragmentados. Como a fragmentação é proibida, o campo identification perde sua função primária de axiliar na reconstrução do pacote.
     2. No contexto de SO, refere-se à reserva de aleatoriedade disponível no kernel. Eu gosto de pensar nele como um tanque de combustível de aleatoriedade.
 
-## Flags - 
+### 2.6 Flags -
 
 O campo flags é um componente crítico de controle situado na segunda palavra de 32 bits do header. Ele inicia-se no bit 48 e termina no bit 50 em relação ao início do header, ou seja, só possui 3 bits. A função primordial do campo é gerenciar a fragmentação e a remontagem do pacote. Ele permite que o protocolo IP desacople o tamanho do datagrama da limitação física do meio (o MTU vai ficar bem mais claro no cálculo do fragment offset), permitindo que pacotes grandes atravessem links com MTUs pequenos, dividindo e marcando para reconstruir depois.
 
@@ -151,7 +153,7 @@ O primeiro bit é reservado e sempre 0. Na prática, qualquer pacote com esse bi
 
 Assim como os outros dois campos dessa linha, identification e fragment offset, o campo flags é inútil sem os outros. O ID vai garantir a unicidade, ou seja, se dois processos enviassem, por exemplo, pings ao mesmo tempo, o receptor misturaria os fragmentos do ping a com o ping b corrompendo os dados. O campo flags vai dizer quando a espera por novos pacotes deve finalizar. E o campo fragment offset, próximo da sequência, vai dizer onde cada bloco deve ser encaixado.
 
-## Fragment Offset -
+### 2.7 Fragment Offset -
 O campo Fragment Offset foi concebido juntamente com o próprio internet protocol (IP) na década de 1970. Esse conceito surgiu da necessidade de interoperabilidade entre redes com diferentes capacidades. No final dos anos 1970 e início dos anos 1980, o protocolo IP foi projetado para rodar sobre diversas tecnologias de camada de enlace. O problema é que cada uma dessas tecnologias impõe um maximum transmission unit (MTU), ou seja, um tamanho máximo de pacote. Isso nos levou a pensar no que fazer caso um datagrama gerado em uma rede com um MTU alto precisasse atravessar uma rede com um MTU baixo. Os arquitetos do IP, principalmente Jon Postel e Vint Cerf, decidiram que os roteadores intermediários teriam a responsabilidade de quebrar, em outras palavras, fragmentar o pacote em pedaços menores. Para permitir que o destino remontasse os pedaços na ordem correta, foi criado o campo fragment offset, ele indica a posição de início dos dados contidos naquele fragmento em relação ao payload do datagrama original.
 
 O cabeçalho IPv4 foi projetado para ser o mais compacto possível, com apenas 20 bytes obrigatórios e o espaço destinado ao fragment offset no cabeçalho é de apenas 16 bits, sendo que 3 deles são reservados para as flags, já discutidas anteriormente, e os outros 13 para o fragment offset. Esse número extremamente baixo se dá pela grande escassez de recursos, estamos falando de uma época onde cada mínimo bit importava, as restrições de hardware eram extremas. Esse número extremamente baixo de bits acarretou em alguns problemas. O maior valor binário que o campo do fragment offset poderia representar seria de 2¹³ = 8191. O problema é que o tamanho máximo de um datagrama IPv4 é de 65.535 bytes, ou seja, como o fragment offset pode dizer onde cada pacote vai começar e terminar se o limite máximo dele é de 8191? A solução foi mais simples do que se pode imaginar, é só multiplicar por 8, ou seja, se o valor do campo offset é de 185, sabemos que esse pacote começa no byte 1480. Isso explica o porquê de o campo fragment offset não ser sequencial, ele não diz a ordem dos pacotes, mas, na verdade, a posição inicial dos bytes daquele payload, pensar nele como um mapa me ajudou na compreensão.
@@ -173,7 +175,7 @@ O fragment offset é, portanto, o ponto de partida dos dados de cada fragmento, 
 
 Apesar de sua engenhosidade, o mecanismo de fragmentação do IPv4 introduz uma complexidade indesejada, gerando sobrecarga de processamento nos roteadores e no host de destino. No contexto da cibersegurança, o fragment offset é fundamental em técnicas de evasão de IDS/IPS, como o tiny fragment attack e a sobreposição maliciosa de fragmentos, também conhecida como overlap. O manuseio inconsistente da remontagem em diferentes stacks TCP/IP é uma vulnerabilidade conhecida, sendo um dos motivos pelos quais o IPv6 praticamente eliminou a fragmentação intermediária, aderindo estritamente ao princípio end-to-end.
 
-## Time to Live - 
+### 2.8 Time to Live -
 O campo TTL é um contador de 8 bits. Ele atua como um mecanismo de segurança para limitar a vida útil de um datagrama na rede. A existência do TTL é crítica para evitar o problema de count-to-infinity em redes de comutação de pacotes¹. Sem esse campo, um erro na configuração das tabelas de roteamento faria com que pacotes circulassem indefinidamente entre roteadores, consumindo largura de banda e poder de processamento até saturar a rede. O que o TTL garante é que todos os pacotes tenham um morte caso se percam em caminhos diversos.
 
 Originalmente, ou seja, na visão da RFC 791, o TTL foi definido como uma unidade de tempo em segundos. A especificação ditava que se um pacote ficasse num roteador por mais de 1 segundo, o campo deveria ser decrementado pelo tempo gasto. Mas hoje em dia ele já não funciona mais assim. Com a RFC 1812, a prática se baseia em decrementar o TTL em 1 unidade a cada hop. Hoje, o TTL é universalmente tratado como um contador de saltos, e não como um cronômetro.
@@ -195,7 +197,7 @@ Com os 8 bits de espaço, temos um TTL com um máximo teórico de 255. Esse valo
 
     1. Arquitetura de comunicação digital onde os dados são segmentados em unidades discretas e independentes (pacotes), contendo informações de cabeçalho para roteamento e controle.
 
-## Protocol - 
+### 2.9 Protocol -
 Esse campo é um identificador numérico de 8 bits que atua como o mecanismo primário de demultiplexação¹ entre a camada de rede e a camada de transporte. No modelo OSI ou TCP/IP, o encapsulamento aninha dados como uma boneca russa. Quando um datagrama IP chega ao seu destino e o cabeçalho IP é processado e removido, o sistema operacional precisa saber o módulo de protocolo apropriado para o qual deve entregar o payload restante. O campo protocol diz quais são os dados brutos que vêm a seguir. Sem este campo, a pilha IP não saberia distinguir se o payload é um segmento TCP, um datagrama UDP, ou só uma mensagem de controle.
 
 Se o valor no campo protocol apontar para um número para o qual o host receptor não possui um handler registrado, o pacote é descartado e a pilha IP gera uma mensagem de erro ICMP de volta ao remetente. Nessa mensagem veremos provavelmente o código 2 para protocol unreachable. Esse mecanismo é fundamental para diagnósticos de rede, informando ao remetente que, embora o host esteja ativo, ele não fala a linguagem de transporte solicitada.
@@ -220,7 +222,7 @@ O campo é um dos 5 pilares da tupla de filtragem em firewalls stateless (Os out
 
     1. É o processo lógico onde o sistema operacional utiliza o identificador numérico (campo protocol) para separa o tráfego convergente recebido na camada de rede (IP) e encaminhá-lo ao módulo de software específico da camada superior para processamento.
 
-## Header Checksum -
+### 2.10 Header Checksum -
 Esse campo é um componente de 16 bits, projetado com um único propósito, garantir a integridade do próprio cabeçalho durante seu trânsito pela rede. Ele funciona como um selo de verificação, permitindo que cada roteador no caminho valide rapidamente se o cabeçalho foi corrompido por erros de transmissão. É crucial entender que seu escopo é estritamente limitado ao cabeçalho, ele não oferece qualquer proteção para os dados do payload, uma responsabilidade delegada aos protocolos da camada de transporte, como TCP e UDP, que possuem seus próprios mecanismos de checksum.
 
 O algoritmo de cálculo é uma soma de complemento de um (one's complement sum) de todas as palavras de 16 bits do cabeçalho. O processo é o seguinte:
@@ -239,10 +241,13 @@ Por outro lado, a manipulação do checksum pode ser usada em ataques DoS contra
 
 Além disso, o campo pode ser explorado para técnicas de fingerprinting. Diferentes sistemas operacionais e dispositivos de rede podem ter implementações de pilha TCP/IP que tratam pacotes com checksums inválidos de maneiras sutilmente distintas. Alguns podem descartar silenciosamente, outros podem registrar um erro, e outros ainda podem ter comportamentos anômalos. Um atacante pode enviar pacotes com checksums incorretos para um alvo e observar a resposta (ou a falta dela) para inferir informações sobre o sistema operacional ou o hardware subjacente.
 
-## Source Address
-## Destination Address
-## Options
-## Padding
+### 2.11 Source Address -
+
+### 2.12 Destination Address -
+
+### 2.13 Options -
+
+### 2.14 Padding -
 Esse campo é frequentemente negligenciado em estudos superficiais, visto apenas como um espaço vazio ou algo assim. Inclusive, em um dos livros usados como fonte aqui, ele nem é mencionado. 
 
 O padding é um campo de tamanho variável inserido no final do cabeçalho IPv4, especificamente após o campo de opções e antes do início do payload, como vemos na imagem que iniciou esse arquivo. A necessidade imperativa deste campo é puramente matemática e arquitetural, derivada da granularidade de processamento das CPUs de 32 bits da época em que o protocolo foi desenhado, na RFC 791. O processamento de memória é otimizado quando os dados estão alinhados em fronteiras de palavras específicas. 
@@ -265,4 +270,4 @@ Voltando para a esteganografia que comentei. Prefiro explicar e demonstar em um 
  <img src="imagens\IPV4\paddingvd.png" alt="Assista ao vídeo" width="250" />
 </a>
 
-## Payload
+### 2.15 Payload -

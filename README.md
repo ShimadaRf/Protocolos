@@ -22,6 +22,8 @@ Aqui está a lista de protocolos e conceitos já documentados. Sinta-se à vonta
 
 - [**Cabeçalho IPv4**](./IPv4.md)
   - Análise detalhada de cada campo do header IPv4 e suas implicações de segurança.
+- [**Cabeçalho BGP**](./BGP.md)
+  - Tratado técnico sobre a estrutura, campos e máquina de estados do border gateway protocol.
 
 *(Esta seção será atualizada conforme novos documentos forem adicionados.)*
 
